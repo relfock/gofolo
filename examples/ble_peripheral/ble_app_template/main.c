@@ -132,6 +132,9 @@ static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        
 static ble_midi_service_t m_midi_service;
 static ble_bas_t m_bas;       /**< Structure used to identify the battery service. */
 
+// YOUR_JOB: Use UUIDs for service(s) used in your application.
+static ble_uuid_t m_adv_uuids[] = {{BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}}; /**< Universally unique service identifiers. */
+
 static void advertising_start(void);
 
 /**@brief Callback function for asserts in the SoftDevice.
@@ -307,8 +310,12 @@ static void gap_params_init(void)
     APP_ERROR_CHECK(err_code);
 }
 
+#define APP_REPORT_CHAR_LEN 1
+extern uint8_t m_char_value[APP_REPORT_CHAR_LEN];
 static void data_io_write_handler(ble_midi_service_t * p_lbs, uint8_t led_state)
 {
+    m_char_value[0] = led_state;
+    NRF_LOG_INFO("led_state %x\r\n", led_state);
     // Action to perform when the Data I/O characteristic is written to
     // TODO
     // Add your implementation here
@@ -617,6 +624,8 @@ static void ble_stack_init(void)
 #if (NRF_SD_BLE_API_VERSION == 3)
     ble_enable_params.gatt_enable_params.att_mtu = NRF_BLE_MAX_MTU_SIZE;
 #endif
+    ble_enable_params.common_enable_params.vs_uuid_count = 2;
+
     err_code = softdevice_enable(&ble_enable_params);
     APP_ERROR_CHECK(err_code);
 

@@ -8,7 +8,11 @@
 #include "nordic_common.h"
 #include "ble_srv_common.h"
 #include "app_util.h"
+#include "nrf_log.h"
  
+#define APP_REPORT_CHAR_LEN 1
+uint8_t                        m_char_value[APP_REPORT_CHAR_LEN];
+
 /**@brief Function for handling the Connect event.
  *
  * @param[in]   p_midi_service   LED Button Service structure.
@@ -105,6 +109,7 @@ static uint32_t data_io_char_add(ble_midi_service_t * p_midi_service, const ble_
     err_code = sd_ble_uuid_vs_add(&base_uuid, &p_midi_service->uuid_type);
     if (err_code != NRF_SUCCESS)
     {
+        NRF_LOG_INFO("ERR 3.1 %d\r\n", err_code);
         return err_code;
     }
     
@@ -127,7 +132,9 @@ static uint32_t data_io_char_add(ble_midi_service_t * p_midi_service, const ble_
     attr_char_value.init_len     = sizeof(uint8_t);
     attr_char_value.init_offs    = 0;
     attr_char_value.max_len      = sizeof(uint8_t);
-    attr_char_value.p_value      = NULL;
+    attr_char_value.p_value      = m_char_value;
+
+    m_char_value[0] = 0x44;
     
     return sd_ble_gatts_characteristic_add(p_midi_service->service_handle, &char_md,
                                                &attr_char_value,
@@ -148,6 +155,7 @@ uint32_t ble_midi_service_init(ble_midi_service_t * p_midi_service, const ble_mi
     err_code = sd_ble_uuid_vs_add(&base_uuid, &p_midi_service->uuid_type);
     if (err_code != NRF_SUCCESS)
     {
+        NRF_LOG_INFO("ERR 1 %d\r\n", err_code);
         return err_code;
     }
     
@@ -157,12 +165,14 @@ uint32_t ble_midi_service_init(ble_midi_service_t * p_midi_service, const ble_mi
     err_code = sd_ble_gatts_service_add(BLE_GATTS_SRVC_TYPE_PRIMARY, &ble_uuid, &p_midi_service->service_handle);
     if (err_code != NRF_SUCCESS)
     {
+        NRF_LOG_INFO("ERR 2\r\n");
         return err_code;
     }
     
     err_code = data_io_char_add(p_midi_service, p_midi_service_init);
     if (err_code != NRF_SUCCESS)
     {
+        NRF_LOG_INFO("ERR 3\r\n");
         return err_code;
     }
     
