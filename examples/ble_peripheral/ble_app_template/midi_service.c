@@ -1,7 +1,7 @@
 /*
  * To change this license header, choose License Headers in Project Properties.
  * To change this template file, choose Tools | Templates
-* and open the template in the editor.
+ * and open the template in the editor.
 */
  
 #include "midi_service.h"
@@ -11,7 +11,7 @@
 #include "nrf_log.h"
  
 #define APP_REPORT_CHAR_LEN 1
-uint8_t                        m_char_value[APP_REPORT_CHAR_LEN];
+uint8_t m_char_value[APP_REPORT_CHAR_LEN];
 
 /**@brief Function for handling the Connect event.
  *
@@ -34,7 +34,6 @@ static void on_disconnect(ble_midi_service_t * p_midi_service, ble_evt_t * p_ble
     p_midi_service->conn_handle = BLE_CONN_HANDLE_INVALID;
 }
  
- 
 /**@brief Function for handling the Write event.
  *
  * @param[in]   p_midi_service   LED Button Service structure.
@@ -51,7 +50,6 @@ static void on_write(ble_midi_service_t * p_midi_service, ble_evt_t * p_ble_evt)
         p_midi_service->data_io_write_handler(p_midi_service, p_evt_write->data[0]);
     }
 }
- 
  
 void ble_midi_service_on_ble_evt(ble_midi_service_t * p_midi_service, ble_evt_t * p_ble_evt)
 {

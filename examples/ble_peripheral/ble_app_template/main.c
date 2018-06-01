@@ -1,57 +1,3 @@
-/**
- * Copyright (c) 2014 - 2017, Nordic Semiconductor ASA
- * 
- * All rights reserved.
- * 
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- * 
- * 1. Redistributions of source code must retain the above copyright notice, this
- *    list of conditions and the following disclaimer.
- * 
- * 2. Redistributions in binary form, except as embedded into a Nordic
- *    Semiconductor ASA integrated circuit in a product or a software update for
- *    such product, must reproduce the above copyright notice, this list of
- *    conditions and the following disclaimer in the documentation and/or other
- *    materials provided with the distribution.
- * 
- * 3. Neither the name of Nordic Semiconductor ASA nor the names of its
- *    contributors may be used to endorse or promote products derived from this
- *    software without specific prior written permission.
- * 
- * 4. This software, with or without modification, must only be used with a
- *    Nordic Semiconductor ASA integrated circuit.
- * 
- * 5. Any software provided in binary form under this license must not be reverse
- *    engineered, decompiled, modified and/or disassembled.
- * 
- * THIS SOFTWARE IS PROVIDED BY NORDIC SEMICONDUCTOR ASA "AS IS" AND ANY EXPRESS
- * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY, NONINFRINGEMENT, AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL NORDIC SEMICONDUCTOR ASA OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
- * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- * 
- */
-
-/** @file
- *
- * @defgroup ble_sdk_app_template_main main.c
- * @{
- * @ingroup ble_sdk_app_template
- * @brief Template project main file.
- *
- * This file contains a template for creating a new application. It has the code necessary to wakeup
- * from button, advertise, get a connection restart advertising on disconnect and if no new
- * connection created go back to system-off mode.
- * It can easily be used as a starting point for creating a new application, the comments identified
- * with 'YOUR_JOB' indicates where and how you can customize.
- */
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -88,52 +34,99 @@
 #include "ble_bas.h"
 #include "midi_service.h"
 
-#define IS_SRVC_CHANGED_CHARACT_PRESENT 1                                           /**< Include or not the service_changed characteristic. if not enabled, the server's database cannot be changed for the lifetime of the device*/
+/* Enable. If not enabled, the server's database cannot be changed */
+#define IS_SRVC_CHANGED_CHARACT_PRESENT 1
 
 #if (NRF_SD_BLE_API_VERSION == 3)
-#define NRF_BLE_MAX_MTU_SIZE            GATT_MTU_SIZE_DEFAULT                       /**< MTU size used in the softdevice enabling and to reply to a BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST event. */
+/* enable MTU size and BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST event. */
+#define NRF_BLE_MAX_MTU_SIZE            GATT_MTU_SIZE_DEFAULT
 #endif
 
-#define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2        /**< Reply when unsupported features are requested. */
+/* Reply when unsupported features are requested. */
+#define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2
 
-#define CENTRAL_LINK_COUNT              0                                           /**< Number of central links used by the application. When changing this number remember to adjust the RAM settings*/
-#define PERIPHERAL_LINK_COUNT           1                                           /**< Number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
+/* Number of central links used by the application. When changing this number remember to adjust the RAM settings*/
+#define CENTRAL_LINK_COUNT              0
 
-#define DEVICE_NAME                     "Nordic_MIDI"                               /**< Name of device. Will be included in the advertising data. */
-#define MANUFACTURER_NAME               "NordicSemiconductor"                       /**< Manufacturer. Will be passed to Device Information Service. */
-#define APP_ADV_INTERVAL                300                                         /**< The advertising interval (in units of 0.625 ms. This value corresponds to 187.5 ms). */
-#define APP_ADV_TIMEOUT_IN_SECONDS      180                                         /**< The advertising timeout in units of seconds. */
+/* Number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
+#define PERIPHERAL_LINK_COUNT           1
 
-#define APP_TIMER_PRESCALER             0                                           /**< Value of the RTC1 PRESCALER register. */
-#define APP_TIMER_OP_QUEUE_SIZE         4                                           /**< Size of timer operation queues. */
+/* Name of device. Will be included in the advertising data. */
+#define DEVICE_NAME                     "Nordic_MIDI"
 
-#define MIN_CONN_INTERVAL               MSEC_TO_UNITS(100, UNIT_1_25_MS)            /**< Minimum acceptable connection interval (0.1 seconds). */
-#define MAX_CONN_INTERVAL               MSEC_TO_UNITS(200, UNIT_1_25_MS)            /**< Maximum acceptable connection interval (0.2 second). */
-#define SLAVE_LATENCY                   0                                           /**< Slave latency. */
-#define CONN_SUP_TIMEOUT                MSEC_TO_UNITS(4000, UNIT_10_MS)             /**< Connection supervisory timeout (4 seconds). */
+/* Manufacturer. Will be passed to Device Information Service. */
+#define MANUFACTURER_NAME               "NordicSemiconductor"
 
-#define FIRST_CONN_PARAMS_UPDATE_DELAY  APP_TIMER_TICKS(5000, APP_TIMER_PRESCALER)  /**< Time from initiating event (connect or start of notification) to first time sd_ble_gap_conn_param_update is called (5 seconds). */
-#define NEXT_CONN_PARAMS_UPDATE_DELAY   APP_TIMER_TICKS(30000, APP_TIMER_PRESCALER) /**< Time between each call to sd_ble_gap_conn_param_update after the first call (30 seconds). */
-#define MAX_CONN_PARAMS_UPDATE_COUNT    3                                           /**< Number of attempts before giving up the connection parameter negotiation. */
+/* The advertising interval (in units of 0.625 ms. This value corresponds to 187.5 ms). */
+#define APP_ADV_INTERVAL                300
 
-#define SEC_PARAM_BOND                  1                                           /**< Perform bonding. */
-#define SEC_PARAM_MITM                  0                                           /**< Man In The Middle protection not required. */
-#define SEC_PARAM_LESC                  0                                           /**< LE Secure Connections not enabled. */
-#define SEC_PARAM_KEYPRESS              0                                           /**< Keypress notifications not enabled. */
-#define SEC_PARAM_IO_CAPABILITIES       BLE_GAP_IO_CAPS_NONE                        /**< No I/O capabilities. */
-#define SEC_PARAM_OOB                   0                                           /**< Out Of Band data not available. */
-#define SEC_PARAM_MIN_KEY_SIZE          7                                           /**< Minimum encryption key size. */
-#define SEC_PARAM_MAX_KEY_SIZE          16                                          /**< Maximum encryption key size. */
+/* The advertising timeout in units of seconds. */
+#define APP_ADV_TIMEOUT_IN_SECONDS      180
 
-#define DEAD_BEEF                       0xDEADBEEF                                  /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
+/* Value of the RTC1 PRESCALER register. */
+#define APP_TIMER_PRESCALER             0
 
-static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                            /**< Handle of the current connection. */
+/* Size of timer operation queues. */
+#define APP_TIMER_OP_QUEUE_SIZE         4
+
+/* Minimum acceptable connection interval (0.1 seconds). */
+#define MIN_CONN_INTERVAL               MSEC_TO_UNITS(100, UNIT_1_25_MS)
+
+/* Maximum acceptable connection interval (0.2 second). */
+#define MAX_CONN_INTERVAL               MSEC_TO_UNITS(200, UNIT_1_25_MS)
+
+/* Slave latency. */
+#define SLAVE_LATENCY                   0
+
+/* Connection supervisory timeout (4 seconds). */
+#define CONN_SUP_TIMEOUT                MSEC_TO_UNITS(4000, UNIT_10_MS)
+
+/* Time from initiating event (connect or start of notification) to first time sd_ble_gap_conn_param_update is called (5 seconds). */
+#define FIRST_CONN_PARAMS_UPDATE_DELAY  APP_TIMER_TICKS(5000, APP_TIMER_PRESCALER)
+
+/* Time between each call to sd_ble_gap_conn_param_update after the first call (30 seconds). */
+#define NEXT_CONN_PARAMS_UPDATE_DELAY   APP_TIMER_TICKS(30000, APP_TIMER_PRESCALER)
+
+/* Number of attempts before giving up the connection parameter negotiation. */
+#define MAX_CONN_PARAMS_UPDATE_COUNT    3
+
+/* Perform bonding. */
+#define SEC_PARAM_BOND                  1
+
+/* Man In The Middle protection not required. */
+#define SEC_PARAM_MITM                  0
+
+/* LE Secure Connections not enabled. */
+#define SEC_PARAM_LESC                  0
+
+/* Keypress notifications not enabled. */
+#define SEC_PARAM_KEYPRESS              0
+
+/* No I/O capabilities. */
+#define SEC_PARAM_IO_CAPABILITIES       BLE_GAP_IO_CAPS_NONE
+
+/* Out Of Band data not available. */
+#define SEC_PARAM_OOB                   0
+
+/* Minimum encryption key size. */
+#define SEC_PARAM_MIN_KEY_SIZE          7
+
+/* Maximum encryption key size. */
+#define SEC_PARAM_MAX_KEY_SIZE          16
+
+/* Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
+#define DEAD_BEEF                       0xDEADBEEF
+
+/* Handle of the current connection. */
+static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;
 
 static ble_midi_service_t m_midi_service;
-static ble_bas_t m_bas;       /**< Structure used to identify the battery service. */
+
+/* Structure used to identify the battery service. */
+static ble_bas_t m_bas;
 
 // YOUR_JOB: Use UUIDs for service(s) used in your application.
-static ble_uuid_t m_adv_uuids[] = {{BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}}; /**< Universally unique service identifiers. */
+//static ble_uuid_t m_adv_uuids[] = {{BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}};
 
 static void advertising_start(void);
 
@@ -152,7 +145,6 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
 {
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
 }
-
 
 /**@brief Function for handling Peer Manager events.
  *
@@ -254,7 +246,6 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
     }
 }
 
-
 /**@brief Function for the Timer initialization.
  *
  * @details Initializes the timer module. This creates and starts application timers.
@@ -276,7 +267,6 @@ static void timers_init(void)
        APP_ERROR_CHECK(err_code); */
 }
 
-
 /**@brief Function for the GAP initialization.
  *
  * @details This function sets up all the necessary GAP (Generic Access Profile) parameters of the
@@ -295,9 +285,8 @@ static void gap_params_init(void)
                                           strlen(DEVICE_NAME));
     APP_ERROR_CHECK(err_code);
 
-    /* YOUR_JOB: Use an appearance value matching the application's use case.
-       err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_);
-       APP_ERROR_CHECK(err_code); */
+    err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_OUTDOOR_SPORTS_ACT_LOC_AND_NAV_DISP);
+    APP_ERROR_CHECK(err_code);
 
     memset(&gap_conn_params, 0, sizeof(gap_conn_params));
 
@@ -321,6 +310,38 @@ static void data_io_write_handler(ble_midi_service_t * p_lbs, uint8_t led_state)
     // Add your implementation here
 }
 
+/**@brief Function for handling the Battery Service events.
+ *
+ * @details This function will be called for all Battery Service events which are passed to the
+ |          application.
+ *
+ * @param[in] p_bas  Battery Service structure.
+ * @param[in] p_evt  Event received from the Battery Service.
+ */
+static void on_bas_evt(ble_bas_t * p_bas, ble_bas_evt_t * p_evt)
+{
+//    uint32_t err_code;
+
+    NRF_LOG_INFO("TYPE %d\r\n", p_evt->evt_type);
+//    switch (p_evt->evt_type)
+//    {
+//        case BLE_BAS_EVT_NOTIFICATION_ENABLED:
+//            // Start battery timer
+//            err_code = app_timer_start(m_battery_timer_id, BATTERY_LEVEL_MEAS_INTERVAL, NULL);
+//            APP_ERROR_CHECK(err_code);
+//            break; // BLE_BAS_EVT_NOTIFICATION_ENABLED
+//
+//        case BLE_BAS_EVT_NOTIFICATION_DISABLED:
+//            err_code = app_timer_stop(m_battery_timer_id);
+//            APP_ERROR_CHECK(err_code);
+//            break; // BLE_BAS_EVT_NOTIFICATION_DISABLED
+//
+//        default:
+//            // No implementation needed.
+//            break;
+//    }
+}
+
 static void services_init(void)
 {
     uint32_t err_code;
@@ -336,10 +357,10 @@ static void services_init(void)
     BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&bas_init.battery_level_char_attr_md.write_perm);
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_report_read_perm);
 
-    bas_init.evt_handler          = NULL;
+    bas_init.evt_handler          = on_bas_evt;
     bas_init.support_notification = true;
     bas_init.p_report_ref         = NULL;
-    bas_init.initial_batt_level   = 100;
+    bas_init.initial_batt_level   = 47;
 
     err_code = ble_bas_init(&m_bas, &bas_init);
     APP_ERROR_CHECK(err_code);
@@ -383,7 +404,6 @@ static void conn_params_error_handler(uint32_t nrf_error)
 {
     APP_ERROR_HANDLER(nrf_error);
 }
-
 
 /**@brief Function for initializing the Connection Parameters module.
  */
@@ -439,7 +459,6 @@ static void sleep_mode_enter(void)
     APP_ERROR_CHECK(err_code);
 }
 
-
 /**@brief Function for handling advertising events.
  *
  * @details This function will be called for advertising events which are passed to the application.
@@ -466,7 +485,6 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
             break;
     }
 }
-
 
 /**@brief Function for handling the Application's BLE Stack events.
  *
@@ -555,7 +573,6 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
     }
 }
 
-
 /**@brief Function for dispatching a BLE stack event to all modules with a BLE stack event handler.
  *
  * @details This function is called from the BLE Stack event interrupt handler after a BLE stack
@@ -567,16 +584,21 @@ static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
 {
     /** The Connection state module has to be fed BLE events in order to function correctly
      * Remember to call ble_conn_state_on_ble_evt before calling any ble_conns_state_* functions. */
+
     ble_conn_state_on_ble_evt(p_ble_evt);
+
     pm_on_ble_evt(p_ble_evt);
+
     ble_conn_params_on_ble_evt(p_ble_evt);
+
     bsp_btn_ble_on_ble_evt(p_ble_evt);
+
     on_ble_evt(p_ble_evt);
+
     ble_advertising_on_ble_evt(p_ble_evt);
 
     ble_midi_service_on_ble_evt(&m_midi_service, p_ble_evt);
 }
-
 
 /**@brief Function for dispatching a system event to interested modules.
  *
@@ -596,7 +618,6 @@ static void sys_evt_dispatch(uint32_t sys_evt)
     // so that it can report correctly to the Advertising module.
     ble_advertising_on_sys_evt(sys_evt);
 }
-
 
 /**@brief Function for initializing the BLE stack.
  *
@@ -624,6 +645,7 @@ static void ble_stack_init(void)
 #if (NRF_SD_BLE_API_VERSION == 3)
     ble_enable_params.gatt_enable_params.att_mtu = NRF_BLE_MAX_MTU_SIZE;
 #endif
+
     ble_enable_params.common_enable_params.vs_uuid_count = 2;
 
     err_code = softdevice_enable(&ble_enable_params);
@@ -637,7 +659,6 @@ static void ble_stack_init(void)
     err_code = softdevice_sys_evt_handler_set(sys_evt_dispatch);
     APP_ERROR_CHECK(err_code);
 }
-
 
 /**@brief Function for the Peer Manager initialization.
  *
@@ -681,7 +702,6 @@ static void peer_manager_init(bool erase_bonds)
     APP_ERROR_CHECK(err_code);
 }
 
-
 /**@brief Function for handling events from the BSP module.
  *
  * @param[in]   event   Event generated when button is pressed.
@@ -721,7 +741,6 @@ static void bsp_event_handler(bsp_event_t event)
     }
 }
 
-
 /**@brief Function for initializing the Advertising functionality.
  */
 static void advertising_init(void)
@@ -748,7 +767,6 @@ static void advertising_init(void)
     APP_ERROR_CHECK(err_code);
 }
 
-
 /**@brief Function for initializing buttons and leds.
  *
  * @param[out] p_erase_bonds  Will be true if the clear bonding button was pressed to wake the application up.
@@ -769,7 +787,6 @@ static void buttons_leds_init(bool * p_erase_bonds)
     *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
 }
 
-
 /**@brief Function for the Power manager.
  */
 static void power_manage(void)
@@ -779,7 +796,6 @@ static void power_manage(void)
     APP_ERROR_CHECK(err_code);
 }
 
-
 /**@brief Function for starting advertising.
  */
 static void advertising_start(void)
@@ -788,7 +804,6 @@ static void advertising_start(void)
 
     APP_ERROR_CHECK(err_code);
 }
-
 
 /**@brief Function for application main entry.
  */
@@ -805,10 +820,10 @@ int main(void)
     buttons_leds_init(&erase_bonds);
     ble_stack_init();
     peer_manager_init(erase_bonds);
+
     if (erase_bonds == true)
-    {
         NRF_LOG_INFO("Bonds erased!\r\n");
-    }
+
     gap_params_init();
     advertising_init();
     services_init();
@@ -822,15 +837,6 @@ int main(void)
 
     // Enter main loop.
     for (;;)
-    {
         if (NRF_LOG_PROCESS() == false)
-        {
             power_manage();
-        }
-    }
 }
-
-
-/**
- * @}
- */
