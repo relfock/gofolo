@@ -57,11 +57,17 @@
 /* Manufacturer. Will be passed to Device Information Service. */
 #define MANUFACTURER_NAME               "NordicSemiconductor"
 
-/* The advertising interval (in units of 0.625 ms. This value corresponds to 187.5 ms). */
-#define APP_ADV_INTERVAL                300
+/* Fast advertising interval (in units of 0.625 ms. This value corresponds to 25 ms.). */
+#define APP_ADV_FAST_INTERVAL            0x0028
 
-/* The advertising timeout in units of seconds. */
-#define APP_ADV_TIMEOUT_IN_SECONDS      180
+/* Slow advertising interval (in units of 0.625 ms. This value corrsponds to 2 seconds). */
+#define APP_ADV_SLOW_INTERVAL            0x0C80
+
+/* The duration of the fast advertising period (in seconds). */
+#define APP_ADV_FAST_TIMEOUT             30
+
+/* The duration of the slow advertising period (in seconds). */
+#define APP_ADV_SLOW_TIMEOUT             180
 
 /* Value of the RTC1 PRESCALER register. */
 #define APP_TIMER_PRESCALER             0
@@ -125,8 +131,7 @@ static ble_midi_service_t m_midi_service;
 /* Structure used to identify the battery service. */
 static ble_bas_t m_bas;
 
-// YOUR_JOB: Use UUIDs for service(s) used in your application.
-//static ble_uuid_t m_adv_uuids[] = {{BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}};
+static ble_uuid_t m_adv_uuids[] = {{BLE_UUID_LOCATION_AND_NAVIGATION_SERVICE, BLE_UUID_TYPE_BLE}};
 
 static void advertising_start(void);
 
@@ -755,15 +760,28 @@ static void advertising_init(void)
     advdata.name_type               = BLE_ADVDATA_FULL_NAME;
     advdata.include_appearance      = true;
     advdata.flags                   = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
-    //advdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
-    //advdata.uuids_complete.p_uuids  = m_adv_uuids;
+    advdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
+    advdata.uuids_complete.p_uuids  = m_adv_uuids;
 
     memset(&options, 0, sizeof(options));
-    options.ble_adv_fast_enabled  = true;
-    options.ble_adv_fast_interval = APP_ADV_INTERVAL;
-    options.ble_adv_fast_timeout  = APP_ADV_TIMEOUT_IN_SECONDS;
+    options.ble_adv_whitelist_enabled      = true;
+    options.ble_adv_directed_enabled       = true;
+    options.ble_adv_directed_slow_enabled  = false;
+    options.ble_adv_directed_slow_interval = 0;
+    options.ble_adv_directed_slow_timeout  = 0;
+    options.ble_adv_fast_enabled           = true;
+    options.ble_adv_fast_interval          = APP_ADV_FAST_INTERVAL;
+    options.ble_adv_fast_timeout           = APP_ADV_FAST_TIMEOUT;
+    options.ble_adv_slow_enabled           = true;
+    options.ble_adv_slow_interval          = APP_ADV_SLOW_INTERVAL;
+    options.ble_adv_slow_timeout           = APP_ADV_SLOW_TIMEOUT;
 
-    err_code = ble_advertising_init(&advdata, NULL, &options, on_adv_evt, NULL);
+    err_code = ble_advertising_init(&advdata,
+                                    NULL,
+                                    &options,
+                                    on_adv_evt,
+                                    NULL);
+
     APP_ERROR_CHECK(err_code);
 }
 
