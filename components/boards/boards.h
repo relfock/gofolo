@@ -62,6 +62,8 @@
   #include "pca10036.h"
 #elif defined(BOARD_PCA10040)
   #include "pca10040.h"
+#elif defined(BOARD_PCAgofolo)
+  #include "pcagofolo.h"
 #elif defined(BOARD_PCA10056)
   #include "pca10056.h"
 #elif defined(BOARD_WT51822)
