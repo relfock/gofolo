@@ -6,6 +6,7 @@
 #include "nrf.h"
 #include "app_error.h"
 #include "ble.h"
+#include "ble_bas.h"
 #include "ble_hci.h"
 #include "ble_srv_common.h"
 #include "ble_advdata.h"
@@ -31,105 +32,57 @@
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 
-#include "ble_bas.h"
-#include "midi_service.h"
+#include "ble_cus.h"
 
-/* Enable. If not enabled, the server's database cannot be changed */
-#define IS_SRVC_CHANGED_CHARACT_PRESENT 1
+#define IS_SRVC_CHANGED_CHARACT_PRESENT 1                                           /**< Include or not the service_changed characteristic. if not enabled, the server's database cannot be changed for the lifetime of the device*/
 
 #if (NRF_SD_BLE_API_VERSION == 3)
-/* enable MTU size and BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST event. */
-#define NRF_BLE_MAX_MTU_SIZE            GATT_MTU_SIZE_DEFAULT
+#define NRF_BLE_MAX_MTU_SIZE            GATT_MTU_SIZE_DEFAULT                       /**< MTU size used in the softdevice enabling and to reply to a BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST event. */
 #endif
 
-/* Reply when unsupported features are requested. */
-#define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2
+#define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2        /**< Reply when unsupported features are requested. */
 
-/* Number of central links used by the application. When changing this number remember to adjust the RAM settings*/
-#define CENTRAL_LINK_COUNT              0
+#define CENTRAL_LINK_COUNT              0                                           /**< Number of central links used by the application. When changing this number remember to adjust the RAM settings*/
+#define PERIPHERAL_LINK_COUNT           1                                           /**< Number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
-/* Number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
-#define PERIPHERAL_LINK_COUNT           1
+#define DEVICE_NAME                     "Gofolo"                           /**< Name of device. Will be included in the advertising data. */
+#define MANUFACTURER_NAME               "GofoloTeam"                       /**< Manufacturer. Will be passed to Device Information Service. */
 
-/* Name of device. Will be included in the advertising data. */
-#define DEVICE_NAME                     "Nordic_MIDI"
+#define APP_ADV_INTERVAL                300                                         /**< The advertising interval (in units of 0.625 ms. This value corresponds to 187.5 ms). */
+#define APP_ADV_TIMEOUT_IN_SECONDS      180                                         /**< The advertising timeout in units of seconds. */
 
-/* Manufacturer. Will be passed to Device Information Service. */
-#define MANUFACTURER_NAME               "NordicSemiconductor"
+#define APP_TIMER_PRESCALER             0                                           /**< Value of the RTC1 PRESCALER register. */
+#define APP_TIMER_OP_QUEUE_SIZE         4                                           /**< Size of timer operation queues. */
 
-/* Fast advertising interval (in units of 0.625 ms. This value corresponds to 25 ms.). */
-#define APP_ADV_FAST_INTERVAL            0x0028
+#define MIN_CONN_INTERVAL               MSEC_TO_UNITS(100, UNIT_1_25_MS)            /**< Minimum acceptable connection interval (0.1 seconds). */
+#define MAX_CONN_INTERVAL               MSEC_TO_UNITS(200, UNIT_1_25_MS)            /**< Maximum acceptable connection interval (0.2 second). */
+#define SLAVE_LATENCY                   0                                           /**< Slave latency. */
+#define CONN_SUP_TIMEOUT                MSEC_TO_UNITS(4000, UNIT_10_MS)             /**< Connection supervisory timeout (4 seconds). */
 
-/* Slow advertising interval (in units of 0.625 ms. This value corrsponds to 2 seconds). */
-#define APP_ADV_SLOW_INTERVAL            0x0C80
+#define FIRST_CONN_PARAMS_UPDATE_DELAY  APP_TIMER_TICKS(5000, APP_TIMER_PRESCALER)  /**< Time from initiating event (connect or start of notification) to first time sd_ble_gap_conn_param_update is called (5 seconds). */
+#define NEXT_CONN_PARAMS_UPDATE_DELAY   APP_TIMER_TICKS(30000, APP_TIMER_PRESCALER) /**< Time between each call to sd_ble_gap_conn_param_update after the first call (30 seconds). */
+#define MAX_CONN_PARAMS_UPDATE_COUNT    3                                           /**< Number of attempts before giving up the connection parameter negotiation. */
 
-/* The duration of the fast advertising period (in seconds). */
-#define APP_ADV_FAST_TIMEOUT             30
+#define SEC_PARAM_BOND                  1                                           /**< Perform bonding. */
+#define SEC_PARAM_MITM                  0                                           /**< Man In The Middle protection not required. */
+#define SEC_PARAM_LESC                  0                                           /**< LE Secure Connections not enabled. */
+#define SEC_PARAM_KEYPRESS              0                                           /**< Keypress notifications not enabled. */
+#define SEC_PARAM_IO_CAPABILITIES       BLE_GAP_IO_CAPS_NONE                        /**< No I/O capabilities. */
+#define SEC_PARAM_OOB                   0                                           /**< Out Of Band data not available. */
+#define SEC_PARAM_MIN_KEY_SIZE          7                                           /**< Minimum encryption key size. */
+#define SEC_PARAM_MAX_KEY_SIZE          16                                          /**< Maximum encryption key size. */
 
-/* The duration of the slow advertising period (in seconds). */
-#define APP_ADV_SLOW_TIMEOUT             180
+#define DEAD_BEEF                       0xDEADBEEF                                  /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
-/* Value of the RTC1 PRESCALER register. */
-#define APP_TIMER_PRESCALER             0
+ble_bas_t m_bas;
+static ble_cus_t m_cus;
 
-/* Size of timer operation queues. */
-#define APP_TIMER_OP_QUEUE_SIZE         4
+static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                            /**< Handle of the current connection. */
 
-/* Minimum acceptable connection interval (0.1 seconds). */
-#define MIN_CONN_INTERVAL               MSEC_TO_UNITS(100, UNIT_1_25_MS)
-
-/* Maximum acceptable connection interval (0.2 second). */
-#define MAX_CONN_INTERVAL               MSEC_TO_UNITS(200, UNIT_1_25_MS)
-
-/* Slave latency. */
-#define SLAVE_LATENCY                   0
-
-/* Connection supervisory timeout (4 seconds). */
-#define CONN_SUP_TIMEOUT                MSEC_TO_UNITS(4000, UNIT_10_MS)
-
-/* Time from initiating event (connect or start of notification) to first time sd_ble_gap_conn_param_update is called (5 seconds). */
-#define FIRST_CONN_PARAMS_UPDATE_DELAY  APP_TIMER_TICKS(5000, APP_TIMER_PRESCALER)
-
-/* Time between each call to sd_ble_gap_conn_param_update after the first call (30 seconds). */
-#define NEXT_CONN_PARAMS_UPDATE_DELAY   APP_TIMER_TICKS(30000, APP_TIMER_PRESCALER)
-
-/* Number of attempts before giving up the connection parameter negotiation. */
-#define MAX_CONN_PARAMS_UPDATE_COUNT    3
-
-/* Perform bonding. */
-#define SEC_PARAM_BOND                  1
-
-/* Man In The Middle protection not required. */
-#define SEC_PARAM_MITM                  0
-
-/* LE Secure Connections not enabled. */
-#define SEC_PARAM_LESC                  0
-
-/* Keypress notifications not enabled. */
-#define SEC_PARAM_KEYPRESS              0
-
-/* No I/O capabilities. */
-#define SEC_PARAM_IO_CAPABILITIES       BLE_GAP_IO_CAPS_NONE
-
-/* Out Of Band data not available. */
-#define SEC_PARAM_OOB                   0
-
-/* Minimum encryption key size. */
-#define SEC_PARAM_MIN_KEY_SIZE          7
-
-/* Maximum encryption key size. */
-#define SEC_PARAM_MAX_KEY_SIZE          16
-
-/* Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
-#define DEAD_BEEF                       0xDEADBEEF
-
-/* Handle of the current connection. */
-static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;
-
-static ble_midi_service_t m_midi_service;
-
-/* Structure used to identify the battery service. */
-static ble_bas_t m_bas;
+/* YOUR_JOB: Declare all services structure your application is using
+   static ble_xx_service_t                     m_xxs;
+   static ble_yy_service_t                     m_yys;
+ */
 
 static ble_uuid_t m_adv_uuids[] = {{BLE_UUID_LOCATION_AND_NAVIGATION_SERVICE, BLE_UUID_TYPE_BLE}};
 
@@ -150,6 +103,7 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
 {
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
 }
+
 
 /**@brief Function for handling Peer Manager events.
  *
@@ -251,26 +205,85 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
     }
 }
 
+APP_TIMER_DEF(m_battery_timer_id);
+
+/* Battery Level sensor simulator configuration. */
+static sensorsim_cfg_t m_battery_sim_cfg;
+
+/* Battery Level sensor simulator state. */
+static sensorsim_state_t m_battery_sim_state;
+
+/* Minimum battery level as returned by the simulated measurement function. */
+#define MIN_BATTERY_LEVEL 81
+
+/* Maximum battery level as returned by the simulated measurement function. */
+#define MAX_BATTERY_LEVEL 100
+
+/* Value by which the battery level is incremented/decremented for each call to the simulated measurement function. */
+#define BATTERY_LEVEL_INCREMENT 1
+
+/**@brief Function for initializing the sensor simulators.
+ */
+static void sensor_simulator_init(void)
+{
+    m_battery_sim_cfg.min          = MIN_BATTERY_LEVEL;
+    m_battery_sim_cfg.max          = MAX_BATTERY_LEVEL;
+    m_battery_sim_cfg.incr         = BATTERY_LEVEL_INCREMENT;
+    m_battery_sim_cfg.start_at_max = true;
+
+    sensorsim_init(&m_battery_sim_state, &m_battery_sim_cfg);
+}
+
+/**@brief Function for performing battery measurement and updating the Battery Level characteristic
+ *        in Battery Service.
+ */
+static void battery_level_update(void)
+{
+    uint32_t err_code;
+    uint8_t  battery_level;
+
+    battery_level = (uint8_t)sensorsim_measure(&m_battery_sim_state, &m_battery_sim_cfg);
+
+    err_code = ble_bas_battery_level_update(&m_bas, battery_level);
+    if ((err_code != NRF_SUCCESS) &&
+        (err_code != NRF_ERROR_INVALID_STATE) &&
+        (err_code != BLE_ERROR_NO_TX_PACKETS) &&
+        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)) {
+        APP_ERROR_HANDLER(err_code);
+    }
+}
+
+/**@brief Function for handling the Battery measurement timer timeout.
+ *
+ * @details This function will be called each time the battery level measurement timer expires.
+ *
+ * @param[in] p_context  Pointer used for passing some arbitrary information (context) from the
+ *                       app_start_timer() call to the timeout handler.
+ */
+static void battery_level_meas_timeout_handler(void * p_context)
+{
+    UNUSED_PARAMETER(p_context);
+    battery_level_update();
+}
+
 /**@brief Function for the Timer initialization.
  *
  * @details Initializes the timer module. This creates and starts application timers.
  */
 static void timers_init(void)
 {
+    uint32_t              err_code;
 
     // Initialize timer module.
     APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, false);
 
     // Create timers.
-
-    /* YOUR_JOB: Create any timers to be used by the application.
-                 Below is an example of how to create a timer.
-                 For every new timer needed, increase the value of the macro APP_TIMER_MAX_TIMERS by
-                 one.
-       uint32_t err_code;
-       err_code = app_timer_create(&m_app_timer_id, APP_TIMER_MODE_REPEATED, timer_timeout_handler);
-       APP_ERROR_CHECK(err_code); */
+    err_code = app_timer_create(&m_battery_timer_id,
+                                APP_TIMER_MODE_REPEATED,
+                                battery_level_meas_timeout_handler);
+    APP_ERROR_CHECK(err_code);
 }
+
 
 /**@brief Function for the GAP initialization.
  *
@@ -290,6 +303,9 @@ static void gap_params_init(void)
                                           strlen(DEVICE_NAME));
     APP_ERROR_CHECK(err_code);
 
+    /* YOUR_JOB: Use an appearance value matching the application's use case.
+       err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_);
+       APP_ERROR_CHECK(err_code); */
     err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_OUTDOOR_SPORTS_ACT_LOC_AND_NAV_DISP);
     APP_ERROR_CHECK(err_code);
 
@@ -304,53 +320,12 @@ static void gap_params_init(void)
     APP_ERROR_CHECK(err_code);
 }
 
-#define APP_REPORT_CHAR_LEN 1
-extern uint8_t m_char_value[APP_REPORT_CHAR_LEN];
-static void data_io_write_handler(ble_midi_service_t * p_lbs, uint8_t led_state)
-{
-    m_char_value[0] = led_state;
-    NRF_LOG_INFO("led_state %x\r\n", led_state);
-    // Action to perform when the Data I/O characteristic is written to
-    // TODO
-    // Add your implementation here
-}
-
-/**@brief Function for handling the Battery Service events.
- *
- * @details This function will be called for all Battery Service events which are passed to the
- |          application.
- *
- * @param[in] p_bas  Battery Service structure.
- * @param[in] p_evt  Event received from the Battery Service.
+/**@brief Function for initializing services that will be used by the application.
  */
-static void on_bas_evt(ble_bas_t * p_bas, ble_bas_evt_t * p_evt)
-{
-//    uint32_t err_code;
-
-    NRF_LOG_INFO("TYPE %d\r\n", p_evt->evt_type);
-//    switch (p_evt->evt_type)
-//    {
-//        case BLE_BAS_EVT_NOTIFICATION_ENABLED:
-//            // Start battery timer
-//            err_code = app_timer_start(m_battery_timer_id, BATTERY_LEVEL_MEAS_INTERVAL, NULL);
-//            APP_ERROR_CHECK(err_code);
-//            break; // BLE_BAS_EVT_NOTIFICATION_ENABLED
-//
-//        case BLE_BAS_EVT_NOTIFICATION_DISABLED:
-//            err_code = app_timer_stop(m_battery_timer_id);
-//            APP_ERROR_CHECK(err_code);
-//            break; // BLE_BAS_EVT_NOTIFICATION_DISABLED
-//
-//        default:
-//            // No implementation needed.
-//            break;
-//    }
-}
-
 static void services_init(void)
 {
-    uint32_t err_code;
-    ble_midi_service_init_t midi_init;
+    ret_code_t err_code;
+    ble_cus_init_t cus_init;
     ble_bas_init_t bas_init;
 
     // Initialize Battery Service.
@@ -362,22 +337,24 @@ static void services_init(void)
     BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&bas_init.battery_level_char_attr_md.write_perm);
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_report_read_perm);
 
-    bas_init.evt_handler          = on_bas_evt;
+    bas_init.evt_handler          = NULL;
     bas_init.support_notification = true;
     bas_init.p_report_ref         = NULL;
-    bas_init.initial_batt_level   = 47;
+    bas_init.initial_batt_level   = 94;
 
     err_code = ble_bas_init(&m_bas, &bas_init);
     APP_ERROR_CHECK(err_code);
 
-    // Initialize the MIDI service
-    memset(&midi_init, 0, sizeof(midi_init));
-    midi_init.data_io_write_handler = data_io_write_handler;
+    // Initialize CUS Service init structure to zero.
+    memset(&cus_init, 0, sizeof(cus_init));
 
-    err_code = ble_midi_service_init(&m_midi_service, &midi_init);
-    NRF_LOG_INFO("Done with services_init()\r\n");
+    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&cus_init.custom_value_char_attr_md.read_perm);
+    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&cus_init.custom_value_char_attr_md.write_perm);
+
+    err_code = ble_cus_init(&m_cus, &cus_init);
     APP_ERROR_CHECK(err_code);
 }
+
 
 /**@brief Function for handling the Connection Parameters Module.
  *
@@ -410,6 +387,7 @@ static void conn_params_error_handler(uint32_t nrf_error)
     APP_ERROR_HANDLER(nrf_error);
 }
 
+
 /**@brief Function for initializing the Connection Parameters module.
  */
 static void conn_params_init(void)
@@ -432,16 +410,18 @@ static void conn_params_init(void)
     APP_ERROR_CHECK(err_code);
 }
 
+/* Battery level measurement interval (ticks). */
+#define BATTERY_LEVEL_MEAS_INTERVAL     APP_TIMER_TICKS(2000, APP_TIMER_PRESCALER)
 
 /**@brief Function for starting timers.
  */
 static void application_timers_start(void)
 {
-    /* YOUR_JOB: Start your timers. below is an example of how to start a timer.
-       uint32_t err_code;
-       err_code = app_timer_start(m_app_timer_id, TIMER_INTERVAL, NULL);
-       APP_ERROR_CHECK(err_code); */
+    uint32_t err_code;
 
+    // Start application timers.
+    err_code = app_timer_start(m_battery_timer_id, BATTERY_LEVEL_MEAS_INTERVAL, NULL);
+    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -463,6 +443,7 @@ static void sleep_mode_enter(void)
     err_code = sd_power_system_off();
     APP_ERROR_CHECK(err_code);
 }
+
 
 /**@brief Function for handling advertising events.
  *
@@ -490,6 +471,7 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
             break;
     }
 }
+
 
 /**@brief Function for handling the Application's BLE Stack events.
  *
@@ -578,6 +560,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
     }
 }
 
+
 /**@brief Function for dispatching a BLE stack event to all modules with a BLE stack event handler.
  *
  * @details This function is called from the BLE Stack event interrupt handler after a BLE stack
@@ -589,21 +572,16 @@ static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
 {
     /** The Connection state module has to be fed BLE events in order to function correctly
      * Remember to call ble_conn_state_on_ble_evt before calling any ble_conns_state_* functions. */
-
     ble_conn_state_on_ble_evt(p_ble_evt);
-
     pm_on_ble_evt(p_ble_evt);
-
+    ble_bas_on_ble_evt(&m_bas, p_ble_evt);
     ble_conn_params_on_ble_evt(p_ble_evt);
-
     bsp_btn_ble_on_ble_evt(p_ble_evt);
-
     on_ble_evt(p_ble_evt);
-
     ble_advertising_on_ble_evt(p_ble_evt);
-
-    ble_midi_service_on_ble_evt(&m_midi_service, p_ble_evt);
+    ble_cus_on_ble_evt(&m_cus, p_ble_evt);
 }
+
 
 /**@brief Function for dispatching a system event to interested modules.
  *
@@ -623,6 +601,7 @@ static void sys_evt_dispatch(uint32_t sys_evt)
     // so that it can report correctly to the Advertising module.
     ble_advertising_on_sys_evt(sys_evt);
 }
+
 
 /**@brief Function for initializing the BLE stack.
  *
@@ -650,9 +629,6 @@ static void ble_stack_init(void)
 #if (NRF_SD_BLE_API_VERSION == 3)
     ble_enable_params.gatt_enable_params.att_mtu = NRF_BLE_MAX_MTU_SIZE;
 #endif
-
-    ble_enable_params.common_enable_params.vs_uuid_count = 2;
-
     err_code = softdevice_enable(&ble_enable_params);
     APP_ERROR_CHECK(err_code);
 
@@ -664,6 +640,7 @@ static void ble_stack_init(void)
     err_code = softdevice_sys_evt_handler_set(sys_evt_dispatch);
     APP_ERROR_CHECK(err_code);
 }
+
 
 /**@brief Function for the Peer Manager initialization.
  *
@@ -707,6 +684,7 @@ static void peer_manager_init(bool erase_bonds)
     APP_ERROR_CHECK(err_code);
 }
 
+
 /**@brief Function for handling events from the BSP module.
  *
  * @param[in]   event   Event generated when button is pressed.
@@ -746,6 +724,7 @@ static void bsp_event_handler(bsp_event_t event)
     }
 }
 
+
 /**@brief Function for initializing the Advertising functionality.
  */
 static void advertising_init(void)
@@ -764,26 +743,14 @@ static void advertising_init(void)
     advdata.uuids_complete.p_uuids  = m_adv_uuids;
 
     memset(&options, 0, sizeof(options));
-    options.ble_adv_whitelist_enabled      = true;
-    options.ble_adv_directed_enabled       = true;
-    options.ble_adv_directed_slow_enabled  = false;
-    options.ble_adv_directed_slow_interval = 0;
-    options.ble_adv_directed_slow_timeout  = 0;
-    options.ble_adv_fast_enabled           = true;
-    options.ble_adv_fast_interval          = APP_ADV_FAST_INTERVAL;
-    options.ble_adv_fast_timeout           = APP_ADV_FAST_TIMEOUT;
-    options.ble_adv_slow_enabled           = true;
-    options.ble_adv_slow_interval          = APP_ADV_SLOW_INTERVAL;
-    options.ble_adv_slow_timeout           = APP_ADV_SLOW_TIMEOUT;
+    options.ble_adv_fast_enabled  = true;
+    options.ble_adv_fast_interval = APP_ADV_INTERVAL;
+    options.ble_adv_fast_timeout  = APP_ADV_TIMEOUT_IN_SECONDS;
 
-    err_code = ble_advertising_init(&advdata,
-                                    NULL,
-                                    &options,
-                                    on_adv_evt,
-                                    NULL);
-
+    err_code = ble_advertising_init(&advdata, NULL, &options, on_adv_evt, NULL);
     APP_ERROR_CHECK(err_code);
 }
+
 
 /**@brief Function for initializing buttons and leds.
  *
@@ -845,6 +812,7 @@ int main(void)
     gap_params_init();
     advertising_init();
     services_init();
+    sensor_simulator_init();
     conn_params_init();
 
     // Start execution.

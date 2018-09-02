@@ -79,7 +79,7 @@ CFLAGS += -DNRF52_PAN_31
 CFLAGS += -DNRF52832
 CFLAGS += -mcpu=cortex-m4
 CFLAGS += -mthumb -mabi=aapcs
-CFLAGS +=  -Wall -Werror -O3 -g3
+CFLAGS +=  -Wall -Werror -O0 -ggdb -g3
 CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 # keep every function in separate section, this allows linker to discard unused ones
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
@@ -105,6 +105,7 @@ ASMFLAGS += -DNRF52_PAN_55
 ASMFLAGS += -DBOARD_PCA10040
 ASMFLAGS += -DNRF52_PAN_31
 ASMFLAGS += -DNRF52832
+ASMFLAGS += -D__HEAP_SIZE=0x1000
 
 # Linker flags
 LDFLAGS += -mthumb -mabi=aapcs -L $(TEMPLATE_PATH) -T$(LINKER_SCRIPT)

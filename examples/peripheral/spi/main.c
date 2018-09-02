@@ -49,28 +49,65 @@
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 
-#define SPI_INSTANCE  0 /**< SPI instance index. */
-static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);  /**< SPI instance. */
-static volatile bool spi_xfer_done;  /**< Flag used to indicate that SPI instance completed the transfer. */
+/**< SPI instance index. */
+#define SPI_INSTANCE  1
 
-#define TEST_STRING "Nordic"
-static uint8_t       m_tx_buf[] = TEST_STRING;           /**< TX buffer. */
-static uint8_t       m_rx_buf[sizeof(TEST_STRING) + 1];    /**< RX buffer. */
-static const uint8_t m_length = sizeof(m_tx_buf);        /**< Transfer length. */
+/**< SPI instance. */
+static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);
 
-/**
- * @brief SPI user event handler.
- * @param event
- */
-void spi_event_handler(nrf_drv_spi_evt_t const * p_event)
+/* LCD resolution */
+#define LCD_XRES 128
+#define LCD_YRES 128
+#define LCD_BYTES_LINE LCD_XRES / 8
+#define LCD_BUF_SIZE LCD_YRES * LCD_BYTES_LINE
+
+static uint8_t m_tx_buf[LCD_YRES * LCD_BYTES_LINE];
+static uint8_t *ptr;
+
+#include "lcd.c"
+
+void clear_lcd()
 {
-    spi_xfer_done = true;
-    NRF_LOG_INFO("Transfer completed.\r\n");
-    if (m_rx_buf[0] != 0)
-    {
-        NRF_LOG_INFO(" Received: \r\n");
-        NRF_LOG_HEXDUMP_INFO(m_rx_buf, strlen((const char *)m_rx_buf));
+    uint8_t data[2];
+    // Clear LCD screen
+    data[0] = 4;
+    data[1] = 0;
+
+    APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, data, 2, NULL, 0));
+
+    return;
+}
+
+void toggle_vcom()
+{
+    int i;
+    uint8_t vcom[2];
+
+    vcom[0] = 0x00;
+    vcom[1] = 0x00;
+
+    while(1) {
+        vcom[0] = ((1 & (i / 2)) << 1);
+        APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, vcom, 2, NULL, 0));
+        nrf_delay_ms(5000);
+        i++;
     }
+}
+
+void write_frame(uint8_t *frame)
+{
+    int i;
+    uint8_t tx_data[LCD_BYTES_LINE + 4];
+
+    memset(tx_data, 0, sizeof(tx_data));
+    for(i = 1; i <= LCD_YRES; ++i) {
+        tx_data[0] = 1 | ((1 & (i / 2)) << 1);
+        tx_data[1] = i;
+        memcpy(tx_data + 2, frame + (i - 1) * LCD_BYTES_LINE, LCD_BYTES_LINE);
+        APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, tx_data, LCD_BYTES_LINE + 4, NULL, 0));
+    }
+
+    return;
 }
 
 int main(void)
@@ -79,31 +116,36 @@ int main(void)
 
     APP_ERROR_CHECK(NRF_LOG_INIT(NULL));
 
-    NRF_LOG_INFO("SPI example\r\n");
+    int pin_number = 20;
+
+    //Configuring a pin as output: 
+    nrf_gpio_cfg_output(pin_number);
+
+    // Turn on the LCD Display
+    nrf_gpio_pin_set(pin_number); 
 
     nrf_drv_spi_config_t spi_config = NRF_DRV_SPI_DEFAULT_CONFIG;
-    spi_config.ss_pin   = SPI_SS_PIN;
-    spi_config.miso_pin = SPI_MISO_PIN;
+    spi_config.frequency = NRF_DRV_SPI_FREQ_1M;
+    spi_config.ss_pin = SPI_SS_PIN;
     spi_config.mosi_pin = SPI_MOSI_PIN;
-    spi_config.sck_pin  = SPI_SCK_PIN;
-    APP_ERROR_CHECK(nrf_drv_spi_init(&spi, &spi_config, spi_event_handler));
+    spi_config.sck_pin = SPI_SCK_PIN;
 
-    while (1)
-    {
-        // Reset rx buffer and transfer done flag
-        memset(m_rx_buf, 0, m_length);
-        spi_xfer_done = false;
+    spi_config.mode = NRF_DRV_SPI_MODE_0;
+    spi_config.bit_order = NRF_DRV_SPI_BIT_ORDER_LSB_FIRST;
 
-        APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, m_tx_buf, m_length, m_rx_buf, m_length));
+    APP_ERROR_CHECK(nrf_drv_spi_init(&spi, &spi_config, NULL));
 
-        while (!spi_xfer_done)
-        {
-            __WFE();
-        }
+    clear_lcd();
 
-        NRF_LOG_FLUSH();
+    nrf_delay_ms(1000);
 
-        bsp_board_led_invert(BSP_BOARD_LED_0);
-        nrf_delay_ms(200);
-    }
+    memset(m_tx_buf, 0x00, sizeof(m_tx_buf));
+
+    ptr = graphics;
+
+    write_frame(ptr);
+
+    toggle_vcom();
+
+    return 0;
 }

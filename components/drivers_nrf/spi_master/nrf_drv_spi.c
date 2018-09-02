@@ -232,10 +232,10 @@ ret_code_t nrf_drv_spi_init(nrf_drv_spi_t const * const p_instance,
     {
         miso_pin = NRF_SPI_PIN_NOT_CONNECTED;
     }
-    // - Slave Select (optional) - output with initial value 1 (inactive).
+    // - Slave Select (optional) - output with initial value 0 (inactive).
     if (p_config->ss_pin != NRF_DRV_SPI_PIN_NOT_USED)
     {
-        nrf_gpio_pin_set(p_config->ss_pin);
+        nrf_gpio_pin_clear(p_config->ss_pin);
         nrf_gpio_cfg_output(p_config->ss_pin);
     }
     m_cb[p_instance->drv_inst_idx].ss_pin = p_config->ss_pin;
@@ -363,7 +363,7 @@ static void finish_transfer(spi_control_block_t * p_cb)
     // If Slave Select signal is used, this is the time to deactivate it.
     if (p_cb->ss_pin != NRF_DRV_SPI_PIN_NOT_USED)
     {
-        nrf_gpio_pin_set(p_cb->ss_pin);
+        nrf_gpio_pin_clear(p_cb->ss_pin);
     }
 
     // By clearing this flag before calling the handler we allow subsequent
@@ -464,7 +464,7 @@ static void spi_xfer(NRF_SPI_Type                  * p_spi,
         } while (transfer_byte(p_spi, p_cb));
         if (p_cb->ss_pin != NRF_DRV_SPI_PIN_NOT_USED)
         {
-            nrf_gpio_pin_set(p_cb->ss_pin);
+            nrf_gpio_pin_clear(p_cb->ss_pin);
         }
     }
 }
@@ -538,7 +538,7 @@ static ret_code_t spim_xfer(NRF_SPIM_Type                * p_spim,
         while (!nrf_spim_event_check(p_spim, NRF_SPIM_EVENT_END)){}
         if (p_cb->ss_pin != NRF_DRV_SPI_PIN_NOT_USED)
         {
-            nrf_gpio_pin_set(p_cb->ss_pin);
+            nrf_gpio_pin_clear(p_cb->ss_pin);
         }
     }
         else
@@ -582,7 +582,7 @@ ret_code_t nrf_drv_spi_xfer(nrf_drv_spi_t     const * const p_instance,
 
     if (p_cb->ss_pin != NRF_DRV_SPI_PIN_NOT_USED)
     {
-        nrf_gpio_pin_clear(p_cb->ss_pin);
+        nrf_gpio_pin_set(p_cb->ss_pin);
     }
     CODE_FOR_SPIM
     (
